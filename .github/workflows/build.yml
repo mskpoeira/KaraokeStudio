@@ -1,0 +1,20 @@
+name: Compilar Karaokê Studio
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Restaurar dependências
+        run: dotnet restore KaraokeStudio.sln
+      - name: Compilar
+        run: dotnet build KaraokeStudio.sln --configuration Release --no-restore

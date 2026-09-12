@@ -1,0 +1,35 @@
+<Window x:Class="KaraokeStudio.LyricsSearchWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pesquisar letras — LRCLIB" Height="620" Width="920" MinHeight="500" MinWidth="760"
+        Background="#111827" Foreground="White" WindowStartupLocation="CenterOwner">
+  <Grid Margin="18">
+    <Grid.RowDefinitions><RowDefinition Height="Auto"/><RowDefinition Height="*"/><RowDefinition Height="Auto"/></Grid.RowDefinitions>
+    <StackPanel>
+      <TextBlock Text="PESQUISA MANUAL DE LETRAS" FontSize="24" FontWeight="Bold" Foreground="#A78BFA"/>
+      <TextBlock Text="Digite música, artista ou ambos. Selecione o resultado correto antes de baixar." Foreground="#CBD5E1" Margin="0,4,0,10"/>
+      <DockPanel>
+        <Button DockPanel.Dock="Right" Content="Pesquisar no LRCLIB" Click="Search_Click" Background="#7C3AED" Foreground="White" IsDefault="True"/>
+        <TextBox x:Name="QueryBox" FontSize="16" ToolTip="Exemplo: Roupa Nova Dona"/>
+      </DockPanel>
+    </StackPanel>
+    <DataGrid x:Name="ResultsGrid" Grid.Row="1" Margin="0,14" AutoGenerateColumns="False" IsReadOnly="True" SelectionMode="Single"
+              Background="#1F2937" Foreground="White" RowBackground="#1F2937" AlternatingRowBackground="#273449">
+      <DataGrid.Columns>
+        <DataGridTextColumn Header="Música" Binding="{Binding Track}" Width="3*"/>
+        <DataGridTextColumn Header="Artista" Binding="{Binding Artist}" Width="2*"/>
+        <DataGridTextColumn Header="Álbum" Binding="{Binding Album}" Width="2*"/>
+        <DataGridTextColumn Header="Duração" Binding="{Binding Time}" Width="80"/>
+        <DataGridTextColumn Header="Tipo" Binding="{Binding Type}" Width="140"/>
+      </DataGrid.Columns>
+    </DataGrid>
+    <DockPanel Grid.Row="2">
+      <TextBlock x:Name="StatusText" Text="Pronto para pesquisar" VerticalAlignment="Center" Foreground="#CBD5E1"/>
+      <StackPanel DockPanel.Dock="Right" Orientation="Horizontal">
+        <Button Content="Nova pesquisa" Click="NewSearch_Click" Background="#334155" Foreground="White"/>
+        <Button Content="Retornar ao acervo" Click="Return_Click" Background="#475569" Foreground="White"/>
+        <Button Content="Adicionar à biblioteca de letras" Click="Download_Click" Background="#059669" Foreground="White"/>
+      </StackPanel>
+    </DockPanel>
+  </Grid>
+</Window>

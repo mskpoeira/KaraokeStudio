@@ -1,0 +1,21 @@
+<Window x:Class="KaraokeStudio.PlayerWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Karaokê Studio — Telão" WindowStyle="None" WindowState="Normal"
+        Background="Black" Foreground="White" KeyDown="Window_KeyDown">
+  <Grid>
+    <MediaElement x:Name="ScreenPlayer" LoadedBehavior="Manual" UnloadedBehavior="Stop" Stretch="Uniform"/>
+    <Border VerticalAlignment="Top" Background="#99000000" Padding="24,14">
+      <StackPanel>
+        <TextBlock x:Name="ScreenTitle" FontSize="26" FontWeight="Bold" TextAlignment="Center"/>
+        <TextBlock x:Name="ScreenSinger" FontSize="18" Foreground="#DDD6FE" TextAlignment="Center"/>
+      </StackPanel>
+    </Border>
+    <Border VerticalAlignment="Bottom" Background="#B3000000" Padding="30,22" Margin="24">
+      <TextBlock x:Name="ScreenLyrics" Text="Karaokê Studio" FontSize="42" FontWeight="Bold"
+                 TextAlignment="Center" TextWrapping="Wrap" Foreground="#FDE047"/>
+    </Border>
+    <TextBlock Text="ESC para sair da tela cheia" HorizontalAlignment="Right" VerticalAlignment="Bottom"
+               Margin="12" Foreground="#66FFFFFF"/>
+  </Grid>
+</Window>
