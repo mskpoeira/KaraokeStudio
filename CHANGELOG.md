@@ -1,5 +1,16 @@
 # Histórico de versões
 
+## 0.5.0
+
+- prioridade offline para mídia e letras; download HTTPS direto e vinculação de áudio;
+- lista de espera persistente, reordenação e nomes de participantes/grupos;
+- notas do apresentador de 0 a 100 e ranking persistente em ordem decrescente;
+- resultado durante 15 segundos e espera de 5 segundos para iniciar a próxima faixa;
+- volume, diagnóstico de falha de reprodução e origem dos arquivos;
+- pesquisas externas no navegador; sem sincronização OAuth ou acesso a caches protegidos;
+- sincronismo pelo relógio do áudio a cada 25 ms, offset ajustável e múltiplos timestamps LRC;
+- letras TXT exibidas como texto, sem tempos artificiais.
+
 ## 0.4.2
 
 - descoberta automática de LRC/TXT na pasta Lyrics e subpastas, ao abrir o programa;

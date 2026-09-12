@@ -26,7 +26,7 @@ public partial class MainWindow : Window
     {
         InitializeComponent(); SongsGrid.ItemsSource=_songs; QueueList.ItemsSource=_queue;
         _database=new DatabaseService(DataRoot); _importer=new(_database);
-        _timer=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(200) }; _timer.Tick+=Timer_Tick;
+        _timer=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(25) }; _timer.Tick+=Timer_Tick;
         Loaded+=async (_,_)=>
         {
             await _database.InitializeAsync();
@@ -36,9 +36,9 @@ public partial class MainWindow : Window
             _lyricsWatcher.Created+=LyricsFolderChanged; _lyricsWatcher.Changed+=LyricsFolderChanged;
             _lyricsWatcher.Deleted+=LyricsFolderChanged; _lyricsWatcher.Renamed+=LyricsFolderChanged;
             _lyricsWatcher.EnableRaisingEvents=true;
-            _ready=true; await RefreshAsync(); StatusText.Text="Pronto — letras locais carregadas";
+            _ready=true; LoadSession(); await RefreshAsync(); StatusText.Text="Pronto — letras locais carregadas";
         };
-        Closed+=(_,_)=>{ _ready=false; _lyricsWatcher?.Dispose(); _lyricsRefreshTimer.Stop(); };
+        Closed+=(_,_)=>{ SaveSession(); CancelPresentation(); _timer.Stop(); _screen?.Close(); _ready=false; _lyricsWatcher?.Dispose(); _lyricsRefreshTimer.Stop(); };
     }
     private void LyricsFolderChanged(object sender, FileSystemEventArgs e)
     {
@@ -86,20 +86,26 @@ public partial class MainWindow : Window
         var row = ItemsControl.ContainerFromElement(SongsGrid, source) as DataGridRow;
         if(row?.Item is not Song song) return;
         e.Handled = true;
-        Start(new QueueItem { Song = song });
+        if(DuringResult) return;
+        Start(new QueueItem { Song = song, Singer=EnteredSingers });
     }
     private void AddSelectedToQueue()
     {
         if(SongsGrid.SelectedItem is Song { MediaPath: "" }) { MessageBox.Show("Esta entrada contém somente a letra. Importe o áudio ou vídeo para cantar com acompanhamento."); return; }
-        if(SongsGrid.SelectedItem is not Song song) return; var singer=Microsoft.VisualBasic.Interaction.InputBox("Nome do cantor:","Adicionar à fila","Convidado"); if(string.IsNullOrWhiteSpace(singer)) return;
+        if(SongsGrid.SelectedItem is not Song song) return; var singer=EnteredSingers;
         _queue.Add(new QueueItem { Song=song, Singer=singer.Trim() }); StatusText.Text=$"{song.Title} entrou na fila";
     }
     private async void Start(QueueItem item)
     {
+        if(DuringResult) return;
+        if(!string.IsNullOrWhiteSpace(item.Song.MediaPath) && !File.Exists(item.Song.MediaPath))
+        { MessageBox.Show("Arquivo não encontrado. Importe novamente o acervo."); return; }
+        CancelPresentation();
         if(string.IsNullOrWhiteSpace(item.Song.MediaPath))
         {
             Player.Stop(); Player.Source=null; _screen?.Stop(); _timer.Stop(); _current=null; _lyrics=[];
             NowPlaying.Text=$"{item.Song.Artist} — {item.Song.Title}"; CurrentSinger.Text="Somente letra — sem áudio";
+            SourceText.Text="Origem: letra local — vincule áudio ou baixe um arquivo de mídia";
             try
             {
                 LyricsText.Text=string.Join(Environment.NewLine,LrcService.Load(item.Song.LyricsPath).Select(x=>x.Text));
@@ -111,10 +117,12 @@ public partial class MainWindow : Window
         }
         if(!File.Exists(item.Song.MediaPath)){ MessageBox.Show("Arquivo não encontrado. Importe novamente o acervo."); return; }
         _current=item;
+        _playing=true;
         Player.Source=new Uri(item.Song.MediaPath); _lyrics=LrcService.Load(item.Song.LyricsPath); NowPlaying.Text=$"{item.Song.Artist} — {item.Song.Title}"; CurrentSinger.Text=$"Cantor(a): {item.Singer}";
         LyricsText.Text=""; _screen?.SetLyrics("");
         if(_screen is not null && _screen.IsLoaded){ _screen.LoadMedia(item.Song.MediaPath,NowPlaying.Text,item.Singer); _screen.Play(); }
-        Player.Play(); _timer.Start(); StatusText.Text="Reproduzindo — consultando letra no LRCLIB...";
+        Player.IsMuted=false; Player.Volume=VolumeSlider.Value;
+        Player.Play(); _timer.Start(); SourceText.Text=$"Origem: {item.Song.SourceLabel} — {item.Song.MediaPath}"; StatusText.Text="Reproduzindo — verificando letra local...";
         try
         {
             await _database.AddHistoryAsync(item.Song.Id,item.Singer);
@@ -124,7 +132,7 @@ public partial class MainWindow : Window
                 item.Song.LyricsPath=lyricsPath;
                 await _database.UpdateLyricsPathAsync(item.Song.Id,lyricsPath);
             }
-            if(!ReferenceEquals(_current,item)) return;
+            if(!ReferenceEquals(_current,item) || DuringResult) return;
             _lyrics=LrcService.Load(item.Song.LyricsPath);
             StatusText.Text=lyricsPath is null?"Reproduzindo — letra não encontrada":"Reproduzindo — letra disponível offline";
         }
@@ -133,24 +141,34 @@ public partial class MainWindow : Window
             if(ReferenceEquals(_current,item)) StatusText.Text="Reproduzindo — não foi possível atualizar a letra ou o histórico";
         }
     }
-    private void Play_Click(object sender,RoutedEventArgs e){ if(Player.Source is null && _queue.Count>0){ var item=_queue[0]; _queue.RemoveAt(0); Start(item); } else { Player.Play(); _screen?.Play(); } }
-    private void Pause_Click(object sender,RoutedEventArgs e){ Player.Pause(); _screen?.Pause(); }
-    private void Stop_Click(object sender,RoutedEventArgs e){ Player.Stop(); _screen?.Stop(); _timer.Stop(); }
-    private void Next_Click(object sender,RoutedEventArgs e)=>PlayNext();
-    private void Player_MediaEnded(object sender,RoutedEventArgs e)=>PlayNext();
-    private void PlayNext(){ Player.Stop(); if(_queue.Count==0){ NowPlaying.Text="Fila encerrada"; CurrentSinger.Text=""; LyricsText.Text="Obrigado!"; _timer.Stop(); return; } var item=_queue[0]; _queue.RemoveAt(0); Start(item); }
+    private void Play_Click(object sender,RoutedEventArgs e){ if(DuringResult) return; if(Player.Source is null && _queue.Count>0){ PlayNext(); } else if(_current is not null) { _playing=true; Player.Play(); _screen?.Play(); _timer.Start(); } }
+    private void Pause_Click(object sender,RoutedEventArgs e){ if(DuringResult) return; _playing=false; Player.Pause(); _screen?.Pause(); _timer.Stop(); }
+    private void Stop_Click(object sender,RoutedEventArgs e){ CancelPresentation(); Player.Stop(); Player.Source=null; _screen?.Stop(); _timer.Stop(); LyricsText.Text="Parado"; StatusText.Text="Parado — lista de espera preservada"; }
+    private void Next_Click(object sender,RoutedEventArgs e){ if(!DuringResult) PlayNext(); }
+    private void PlayNext()
+    {
+        CancelPresentation(); Player.Stop(); Player.Source=null; _screen?.Stop(); _timer.Stop();
+        if(_queue.Count==0){ NowPlaying.Text="Lista de espera encerrada"; CurrentSinger.Text=""; ShowStage("Obrigado!"); return; }
+        var item=_queue[0];
+        if(!File.Exists(item.Song.MediaPath)) { StatusText.Text="O arquivo da próxima música não existe. Remova ou corrija a entrada da lista."; return; }
+        _queue.RemoveAt(0); Start(item);
+    }
     private void Timer_Tick(object? sender,EventArgs e)
     {
         if(Player.NaturalDuration.HasTimeSpan){ PositionSlider.Maximum=Player.NaturalDuration.TimeSpan.TotalSeconds; PositionSlider.Value=Player.Position.TotalSeconds; }
-        var current=_lyrics.LastOrDefault(x=>x.Time<=Player.Position); if(current is not null){ LyricsText.Text=current.Text; _screen?.SetLyrics(current.Text); }
+        var position=Player.Position+TimeSpan.FromMilliseconds(LyricsOffsetSlider.Value);
+        var current=_lyrics.LastOrDefault(x=>x.Time<=position);
+        var text=current?.Text??"";
+        if(LyricsText.Text!=text) { LyricsText.Text=text; _screen?.SetLyrics(text); }
     }
-    private void PositionSlider_ValueChanged(object sender,RoutedPropertyChangedEventArgs<double> e){ if(Mouse.LeftButton==MouseButtonState.Pressed && Player.Source is not null){ Player.Position=TimeSpan.FromSeconds(e.NewValue); _screen?.Seek(Player.Position); } }
+    private void PositionSlider_ValueChanged(object sender,RoutedPropertyChangedEventArgs<double> e){ if(!DuringResult && Mouse.LeftButton==MouseButtonState.Pressed && Player.Source is not null){ Player.Position=TimeSpan.FromSeconds(e.NewValue); _screen?.Seek(Player.Position); } }
     private void Screen_Click(object sender,RoutedEventArgs e)
     {
         if(_screen is not null && _screen.IsLoaded){ _screen.Activate(); return; }
         _screen=new PlayerWindow(); _screen.Closed+=(_,_)=>_screen=null;
         _screen.Show(); _screen.WindowState=WindowState.Maximized;
-        if(_current is not null && Player.Source is not null){ _screen.LoadMedia(_current.Song.MediaPath,NowPlaying.Text,_current.Singer); _screen.Seek(Player.Position); _screen.Play(); }
+        if(_current is not null && Player.Source is not null){ _screen.LoadMedia(_current.Song.MediaPath,NowPlaying.Text,_current.Singer); _screen.Seek(Player.Position); if(_playing) _screen.Play(); }
+        if(DuringResult) _screen.SetLyrics(_stageMessage);
     }
     private void RemoveQueue_Click(object sender,RoutedEventArgs e){ if(QueueList.SelectedItem is QueueItem item) _queue.Remove(item); }
     private async void Favorite_Click(object sender,RoutedEventArgs e)
@@ -173,7 +191,7 @@ public partial class MainWindow : Window
             for(var index=0;index<mediaSongs.Count;index++)
             {
                 var song=mediaSongs[index]; StatusText.Text=$"LRCLIB: {index+1}/{mediaSongs.Count} — {song.Artist} — {song.Title}";
-                var previous=song.LyricsPath; var path=await _lyricsProvider.ResolveAndCacheAsync(song);
+                var previous=song.LyricsPath; var path=await _lyricsProvider.ResolveAndCacheAsync(song,refreshOnline:true);
                 if(!string.IsNullOrWhiteSpace(path)){ song.LyricsPath=path; await _database.UpdateLyricsPathAsync(song.Id,path); if(previous==path) cached++; else downloaded++; }
                 await Task.Delay(200);
             }

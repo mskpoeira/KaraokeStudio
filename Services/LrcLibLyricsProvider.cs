@@ -91,8 +91,10 @@ public sealed class LrcLibLyricsProvider : ILyricsProvider, IDisposable
         return path;
     }
 
-    public async Task<string?> ResolveAndCacheAsync(Song song, CancellationToken token = default)
+    public async Task<string?> ResolveAndCacheAsync(Song song, CancellationToken token = default, bool refreshOnline = false)
     {
+        var local=File.Exists(song.LyricsPath)?song.LyricsPath:FindCached(song) ?? FindMediaSidecar(song.MediaPath);
+        if(!refreshOnline && local is not null) return local;
         var result = await FindAsync(song.Artist, song.Title, token);
         if (result is not null)
         {

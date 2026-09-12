@@ -1,4 +1,4 @@
-# Karaokê Studio — versão 0.4.2
+# Karaokê Studio — versão 0.5.0
 
 Aplicativo de karaokê para Windows, criado em C# + WPF + .NET 8.
 
@@ -53,7 +53,7 @@ O catálogo reconhece MP3, MP4, M4A, WAV, WMA, AVI, WMV, MKV, MIDI, KAR e CDG. A
 
 ## Letras obtidas na internet
 
-O programa integra a API pública do LRCLIB. Ao iniciar uma música, tenta obter a versão mais atual da letra e grava automaticamente uma cópia na pasta padrão `%LOCALAPPDATA%\KaraokeStudio\Lyrics`, organizada em subpastas por artista. Sem internet ou sem resultado remoto, utiliza automaticamente essa cópia; arquivos `.lrc` ou `.txt` antigos mantidos ao lado da mídia também continuam compatíveis. O botão **Sincronizar letras** percorre todo o catálogo, consultando somente as músicas importadas; ele não baixa o despejo integral do serviço.
+O programa integra a API pública do LRCLIB. Ao iniciar uma música, prioriza a letra local. Se não houver letra salva, consulta o LRCLIB e grava automaticamente uma cópia na pasta padrão `%LOCALAPPDATA%\KaraokeStudio\Lyrics`, organizada em subpastas por artista. Sem internet ou sem resultado remoto, utiliza automaticamente essa cópia; arquivos `.lrc` ou `.txt` antigos mantidos ao lado da mídia também continuam compatíveis. O botão **Sincronizar letras** percorre todo o catálogo, consultando somente as músicas importadas; ele não baixa o despejo integral do serviço.
 
 O LRCLIB não exige chave de API, mas o uso permanece sujeito aos termos do serviço e aos direitos dos autores das letras. O aplicativo envia apenas artista e título necessários à pesquisa.
 
@@ -84,3 +84,19 @@ Os créditos e a licença do projeto de referência estão registrados em `THIRD
 ## Letras locais no acervo
 
 Ao abrir, o programa descobre arquivos LRC/TXT em `%LOCALAPPDATA%\KaraokeStudio\Lyrics` e todas as subpastas. Alterações nessa pasta atualizam a lista automaticamente. O botão Importar acervo também aceita pastas de letras. Letras sem mídia aparecem como **Só letra**: o duplo clique abre o texto, sem áudio. Para acompanhamento, importe a música com artista e título correspondentes. A associação mantém diferenças como versões ao vivo.
+
+## Sessão offline, espera e pontuação (0.5.0)
+
+Sincronismo: o LRC acompanha a posição real do áudio, atualizada a cada 25 ms. O leitor aceita múltiplos tempos por linha e `[offset:...]`. O ajuste LRC da interface permite adiantar (positivo) ou atrasar (negativo) a letra em milissegundos; ele vale para a sessão atual. Letras TXT são texto sem sincronismo. Use sempre o LRC da mesma gravação, pois tempos de versões ao vivo e de estúdio diferem. Atraso zero em todo equipamento não é garantido.
+
+- Áudio local em `%LOCALAPPDATA%\KaraokeStudio\Acervo`; letras locais têm prioridade, sem consulta remota quando já disponíveis.
+- Selecione uma letra e use **Vincular áudio local** para copiar o MP3/MP4 correspondente para o acervo; **Baixar link direto** aceita mídia HTTPS MP3/WAV/MP4, até 500 MB, e registra o domínio de origem. Links de páginas não são downloads de áudio.
+- Digite os nomes dos participantes (ou grupo) antes de adicionar à espera ou dar duplo clique. Edite e reordene a lista com os botões inferiores.
+- **Dar nota do apresentador (0–100)** prepara uma nota durante a música ou registra a nota depois do término. Sem nota, o programa aguarda o apresentador. Não há captura de microfone nem análise automática de afinação.
+- No término, a nota preparada é salva e o ranking é ordenado do maior para o menor. Empates seguem a ordem de registro. Resultado por 15 segundos, depois contagem de 5 segundos, então próxima música.
+- Parar cancela a transição. Pular interrompe a música sem pontuar. Durante resultado/contagem, use Parar para cancelar; os demais comandos de reprodução ficam sem efeito.
+- Lista de espera e ranking persistem em `session.json` na pasta de dados; a faixa em execução não é retomada após fechamento. Backup do catálogo cobre apenas SQLite, não mídia, ranking ou fila.
+- Volume principal explícito e telão mudo evitam áudio duplicado. Codecs dependem do Windows; MP3+G/CDG/KAR ainda não têm decodificador especializado.
+- YouTube/Spotify abrem pesquisas externas no navegador, usando a sessão que existir nele. Não há login OAuth, sincronização de contas, reprodução integrada ou acesso ao cache offline desses serviços. APIs oficiais não entregam esses caches como arquivos locais.
+
+Referências: https://developers.google.com/youtube/terms/developer-policies e https://developer.spotify.com/documentation/web-playback-sdk

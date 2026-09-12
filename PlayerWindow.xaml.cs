@@ -5,7 +5,7 @@ namespace KaraokeStudio;
 
 public partial class PlayerWindow : Window
 {
-    public PlayerWindow() => InitializeComponent();
+    public PlayerWindow() { InitializeComponent(); ScreenPlayer.IsMuted=true; }
     public void LoadMedia(string path, string title, string singer)
     {
         ScreenPlayer.Source = new Uri(path);

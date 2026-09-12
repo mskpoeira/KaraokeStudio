@@ -11,6 +11,21 @@ public sealed class Song
     public string FileHash { get; set; } = "";
     public string Format { get; set; } = "";
     public bool Favorite { get; set; }
+    public string SourceLabel
+    {
+        get
+        {
+            if(string.IsNullOrWhiteSpace(MediaPath)) return "Só letra — sem áudio";
+            try
+            {
+                var origin=MediaPath+".origin.txt";
+                if(System.IO.File.Exists(origin)) return "Offline • "+System.IO.File.ReadAllText(origin);
+            }
+            catch(System.IO.IOException) { }
+            catch(UnauthorizedAccessException) { }
+            return "Arquivo local (offline)";
+        }
+    }
     public string LyricsStatus => System.IO.File.Exists(LyricsPath) ? "Sim" : "Não";
     public override string ToString() => $"{Artist} — {Title}";
 }
