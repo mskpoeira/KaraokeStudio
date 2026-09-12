@@ -1,5 +1,12 @@
 # Histórico de versões
 
+## 0.4.1
+
+- duplo clique na música do acervo inicia a reprodução como Convidado;
+- cabeçalhos e área vazia não iniciam músicas;
+- consulta de letras durante a reprodução, sem bloquear o início;
+- respostas de consultas anteriores não substituem a letra da música atual.
+
 ## 0.4.0
 
 - biblioteca de letras com seleção individual, múltipla e total;

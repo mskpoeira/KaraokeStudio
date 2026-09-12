@@ -1,4 +1,4 @@
-# Karaokê Studio — versão 0.4.0
+# Karaokê Studio — versão 0.4.1
 
 Aplicativo de karaokê para Windows, criado em C# + WPF + .NET 8.
 
@@ -35,6 +35,8 @@ Quando estiver satisfeito com os testes, também é possível clicar com o botã
 - letras sincronizadas em LRC;
 - telão em janela própria, preparado para o segundo monitor;
 - favoritos, histórico interno de apresentações e backup do catálogo.
+
+Dê dois cliques na música do acervo para reproduzir imediatamente como Convidado. A fila existente permanece disponível; a consulta de letras acontece durante a reprodução.
 
 ## Primeiro teste recomendado
 

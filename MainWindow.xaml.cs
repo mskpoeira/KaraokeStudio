@@ -36,7 +36,14 @@ public partial class MainWindow : Window
         finally { IsEnabled=true; StatusText.Text="Pronto"; }
     }
     private void AddQueue_Click(object sender, RoutedEventArgs e) => AddSelectedToQueue();
-    private void SongsGrid_DoubleClick(object sender, MouseButtonEventArgs e) => AddSelectedToQueue();
+    private void SongsGrid_DoubleClick(object sender, MouseButtonEventArgs e)
+    {
+        if(e.ChangedButton != MouseButton.Left || e.OriginalSource is not DependencyObject source) return;
+        var row = ItemsControl.ContainerFromElement(SongsGrid, source) as DataGridRow;
+        if(row?.Item is not Song song) return;
+        e.Handled = true;
+        Start(new QueueItem { Song = song });
+    }
     private void AddSelectedToQueue()
     {
         if(SongsGrid.SelectedItem is not Song song) return; var singer=Microsoft.VisualBasic.Interaction.InputBox("Nome do cantor:","Adicionar à fila","Convidado"); if(string.IsNullOrWhiteSpace(singer)) return;
@@ -46,12 +53,27 @@ public partial class MainWindow : Window
     {
         if(!File.Exists(item.Song.MediaPath)){ MessageBox.Show("Arquivo não encontrado. Importe novamente o acervo."); return; }
         _current=item;
-        StatusText.Text="Consultando letra no LRCLIB...";
-        var lyricsPath=await _lyricsProvider.ResolveAndCacheAsync(item.Song);
-        if(!string.IsNullOrWhiteSpace(lyricsPath)){ item.Song.LyricsPath=lyricsPath; await _database.UpdateLyricsPathAsync(item.Song.Id,lyricsPath); }
         Player.Source=new Uri(item.Song.MediaPath); _lyrics=LrcService.Load(item.Song.LyricsPath); NowPlaying.Text=$"{item.Song.Artist} — {item.Song.Title}"; CurrentSinger.Text=$"Cantor(a): {item.Singer}";
+        LyricsText.Text=""; _screen?.SetLyrics("");
         if(_screen is not null && _screen.IsLoaded){ _screen.LoadMedia(item.Song.MediaPath,NowPlaying.Text,item.Singer); _screen.Play(); }
-        Player.Play(); _timer.Start(); await _database.AddHistoryAsync(item.Song.Id,item.Singer); StatusText.Text=lyricsPath is null?"Reproduzindo — letra não encontrada":"Reproduzindo — letra disponível offline";
+        Player.Play(); _timer.Start(); StatusText.Text="Reproduzindo — consultando letra no LRCLIB...";
+        try
+        {
+            await _database.AddHistoryAsync(item.Song.Id,item.Singer);
+            var lyricsPath=await _lyricsProvider.ResolveAndCacheAsync(item.Song);
+            if(!string.IsNullOrWhiteSpace(lyricsPath))
+            {
+                item.Song.LyricsPath=lyricsPath;
+                await _database.UpdateLyricsPathAsync(item.Song.Id,lyricsPath);
+            }
+            if(!ReferenceEquals(_current,item)) return;
+            _lyrics=LrcService.Load(item.Song.LyricsPath);
+            StatusText.Text=lyricsPath is null?"Reproduzindo — letra não encontrada":"Reproduzindo — letra disponível offline";
+        }
+        catch(Exception)
+        {
+            if(ReferenceEquals(_current,item)) StatusText.Text="Reproduzindo — não foi possível atualizar a letra ou o histórico";
+        }
     }
     private void Play_Click(object sender,RoutedEventArgs e){ if(Player.Source is null && _queue.Count>0){ var item=_queue[0]; _queue.RemoveAt(0); Start(item); } else { Player.Play(); _screen?.Play(); } }
     private void Pause_Click(object sender,RoutedEventArgs e){ Player.Pause(); _screen?.Pause(); }
