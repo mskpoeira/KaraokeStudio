@@ -11,6 +11,6 @@ public sealed class Song
     public string FileHash { get; set; } = "";
     public string Format { get; set; } = "";
     public bool Favorite { get; set; }
-    public string LyricsStatus => string.IsNullOrWhiteSpace(LyricsPath) ? "Não" : "Sim";
+    public string LyricsStatus => System.IO.File.Exists(LyricsPath) ? "Sim" : "Não";
     public override string ToString() => $"{Artist} — {Title}";
 }

@@ -1,4 +1,4 @@
-# Karaokê Studio — versão 0.4.1
+# Karaokê Studio — versão 0.4.2
 
 Aplicativo de karaokê para Windows, criado em C# + WPF + .NET 8.
 
@@ -80,3 +80,7 @@ Os créditos e a licença do projeto de referência estão registrados em `THIRD
 - controle remoto por celular na rede local;
 - microfone, pontuação e gravação;
 - instalador MSIX e atualização automática.
+
+## Letras locais no acervo
+
+Ao abrir, o programa descobre arquivos LRC/TXT em `%LOCALAPPDATA%\KaraokeStudio\Lyrics` e todas as subpastas. Alterações nessa pasta atualizam a lista automaticamente. O botão Importar acervo também aceita pastas de letras. Letras sem mídia aparecem como **Só letra**: o duplo clique abre o texto, sem áudio. Para acompanhamento, importe a música com artista e título correspondentes. A associação mantém diferenças como versões ao vivo.

@@ -1,5 +1,13 @@
 # Histórico de versões
 
+## 0.4.2
+
+- descoberta automática de LRC/TXT na pasta Lyrics e subpastas, ao abrir o programa;
+- atualização do acervo quando letras são gravadas, renomeadas ou excluídas;
+- importação de pastas de letras e visualização de entradas “Só letra”;
+- associação por artista e título, preservando diferenças como “Ao Vivo”;
+- leitura dos metadados LRCLIB e tratamento de prefixos de artista repetidos.
+
 ## 0.4.1
 
 - duplo clique na música do acervo inicia a reprodução como Convidado;

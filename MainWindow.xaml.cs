@@ -17,15 +17,59 @@ public partial class MainWindow : Window
     private IReadOnlyList<LyricLine> _lyrics=[];
     private PlayerWindow? _screen;
     private QueueItem? _current;
+    private bool _ready;
+    private int _refreshVersion;
+    private FileSystemWatcher? _lyricsWatcher;
+    private readonly DispatcherTimer _lyricsRefreshTimer = new() { Interval=TimeSpan.FromMilliseconds(700) };
     private static string DataRoot => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),"KaraokeStudio");
     public MainWindow()
     {
         InitializeComponent(); SongsGrid.ItemsSource=_songs; QueueList.ItemsSource=_queue;
         _database=new DatabaseService(DataRoot); _importer=new(_database);
         _timer=new DispatcherTimer { Interval=TimeSpan.FromMilliseconds(200) }; _timer.Tick+=Timer_Tick;
-        Loaded+=async (_,_)=>{ await _database.InitializeAsync(); await RefreshAsync(); StatusText.Text="Pronto"; };
+        Loaded+=async (_,_)=>
+        {
+            await _database.InitializeAsync();
+            Directory.CreateDirectory(LrcLibLyricsProvider.LyricsRoot);
+            _lyricsRefreshTimer.Tick+=async (_,_)=>{ _lyricsRefreshTimer.Stop(); await RefreshAsync(SearchBox.Text.Trim()); };
+            _lyricsWatcher=new FileSystemWatcher(LrcLibLyricsProvider.LyricsRoot) { IncludeSubdirectories=true };
+            _lyricsWatcher.Created+=LyricsFolderChanged; _lyricsWatcher.Changed+=LyricsFolderChanged;
+            _lyricsWatcher.Deleted+=LyricsFolderChanged; _lyricsWatcher.Renamed+=LyricsFolderChanged;
+            _lyricsWatcher.EnableRaisingEvents=true;
+            _ready=true; await RefreshAsync(); StatusText.Text="Pronto — letras locais carregadas";
+        };
+        Closed+=(_,_)=>{ _ready=false; _lyricsWatcher?.Dispose(); _lyricsRefreshTimer.Stop(); };
     }
-    private async Task RefreshAsync(string term="") { _songs.Clear(); foreach(var song in await _database.SearchAsync(term)) _songs.Add(song); }
+    private void LyricsFolderChanged(object sender, FileSystemEventArgs e)
+    {
+        if(Dispatcher.HasShutdownStarted) return;
+        Dispatcher.BeginInvoke(new Action(()=>{ if(!_ready) return; _lyricsRefreshTimer.Stop(); _lyricsRefreshTimer.Start(); }));
+    }
+    private async Task RefreshAsync(string term="")
+    {
+        if(!_ready) return;
+        var version=++_refreshVersion;
+        try
+        {
+            var songs=await _database.SearchAsync();
+            var local=await Task.Run(LocalLyricsService.Scan);
+            if(version!=_refreshVersion) return;
+            foreach(var song in songs)
+            {
+                var lyric=local.FirstOrDefault(x=>LocalLyricsService.Matches(song,x));
+                if(lyric is not null && !string.Equals(song.LyricsPath,lyric.LyricsPath,StringComparison.OrdinalIgnoreCase))
+                {
+                    song.LyricsPath=lyric.LyricsPath;
+                    await _database.UpdateLyricsPathAsync(song.Id,lyric.LyricsPath!);
+                }
+            }
+            var rows=songs.Concat(local.Where(x=>!songs.Any(s=>LocalLyricsService.Matches(s,x) || string.Equals(s.LyricsPath,x.LyricsPath,StringComparison.OrdinalIgnoreCase))));
+            var filtered=rows.Where(x=>string.IsNullOrWhiteSpace(term) || $"{x.Artist} {x.Title} {x.Genre}".Contains(term,StringComparison.OrdinalIgnoreCase)).OrderBy(x=>x.Artist).ThenBy(x=>x.Title).ToList();
+            if(version!=_refreshVersion) return;
+            _songs.Clear(); foreach(var song in filtered) _songs.Add(song);
+        }
+        catch(Exception ex) { StatusText.Text=$"Não foi possível atualizar o acervo: {ex.Message}"; }
+    }
     private async void Search_TextChanged(object sender, TextChangedEventArgs e) { await RefreshAsync(SearchBox.Text.Trim()); }
     private async void Import_Click(object sender, RoutedEventArgs e)
     {
@@ -46,11 +90,25 @@ public partial class MainWindow : Window
     }
     private void AddSelectedToQueue()
     {
+        if(SongsGrid.SelectedItem is Song { MediaPath: "" }) { MessageBox.Show("Esta entrada contém somente a letra. Importe o áudio ou vídeo para cantar com acompanhamento."); return; }
         if(SongsGrid.SelectedItem is not Song song) return; var singer=Microsoft.VisualBasic.Interaction.InputBox("Nome do cantor:","Adicionar à fila","Convidado"); if(string.IsNullOrWhiteSpace(singer)) return;
         _queue.Add(new QueueItem { Song=song, Singer=singer.Trim() }); StatusText.Text=$"{song.Title} entrou na fila";
     }
     private async void Start(QueueItem item)
     {
+        if(string.IsNullOrWhiteSpace(item.Song.MediaPath))
+        {
+            Player.Stop(); Player.Source=null; _screen?.Stop(); _timer.Stop(); _current=null; _lyrics=[];
+            NowPlaying.Text=$"{item.Song.Artist} — {item.Song.Title}"; CurrentSinger.Text="Somente letra — sem áudio";
+            try
+            {
+                LyricsText.Text=string.Join(Environment.NewLine,LrcService.Load(item.Song.LyricsPath).Select(x=>x.Text));
+                _screen?.SetLyrics(LyricsText.Text);
+                StatusText.Text="Letra local aberta. Importe o áudio ou vídeo correspondente para reproduzir.";
+            }
+            catch(IOException) { StatusText.Text="Não foi possível ler a letra. Atualize o acervo e tente novamente."; }
+            return;
+        }
         if(!File.Exists(item.Song.MediaPath)){ MessageBox.Show("Arquivo não encontrado. Importe novamente o acervo."); return; }
         _current=item;
         Player.Source=new Uri(item.Song.MediaPath); _lyrics=LrcService.Load(item.Song.LyricsPath); NowPlaying.Text=$"{item.Song.Artist} — {item.Song.Title}"; CurrentSinger.Text=$"Cantor(a): {item.Singer}";
@@ -97,6 +155,7 @@ public partial class MainWindow : Window
     private void RemoveQueue_Click(object sender,RoutedEventArgs e){ if(QueueList.SelectedItem is QueueItem item) _queue.Remove(item); }
     private async void Favorite_Click(object sender,RoutedEventArgs e)
     {
+        if(SongsGrid.SelectedItem is Song { MediaPath: "" }) return;
         if(SongsGrid.SelectedItem is not Song song) return; song.Favorite=!song.Favorite; await _database.SetFavoriteAsync(song.Id,song.Favorite); await RefreshAsync(SearchBox.Text.Trim());
     }
     private void Backup_Click(object sender,RoutedEventArgs e)
@@ -106,28 +165,32 @@ public partial class MainWindow : Window
     }
     private async void SyncLyrics_Click(object sender,RoutedEventArgs e)
     {
-        if(_songs.Count==0){ MessageBox.Show("Importe as músicas antes de sincronizar as letras."); return; }
+        var mediaSongs=_songs.Where(x=>!string.IsNullOrWhiteSpace(x.MediaPath)).ToList();
+        if(mediaSongs.Count==0){ MessageBox.Show("As letras locais já estão no acervo. Importe áudio ou vídeo para sincronizar letras de músicas."); return; }
         var downloaded=0; var cached=0; IsEnabled=false;
         try
         {
-            for(var index=0;index<_songs.Count;index++)
+            for(var index=0;index<mediaSongs.Count;index++)
             {
-                var song=_songs[index]; StatusText.Text=$"LRCLIB: {index+1}/{_songs.Count} — {song.Artist} — {song.Title}";
+                var song=mediaSongs[index]; StatusText.Text=$"LRCLIB: {index+1}/{mediaSongs.Count} — {song.Artist} — {song.Title}";
                 var previous=song.LyricsPath; var path=await _lyricsProvider.ResolveAndCacheAsync(song);
                 if(!string.IsNullOrWhiteSpace(path)){ song.LyricsPath=path; await _database.UpdateLyricsPathAsync(song.Id,path); if(previous==path) cached++; else downloaded++; }
                 await Task.Delay(200);
             }
-            MessageBox.Show($"Sincronização concluída.\n\nBaixadas/atualizadas: {downloaded}\nDisponíveis no cache: {cached}\nSem resultado: {_songs.Count-downloaded-cached}","LRCLIB");
+            MessageBox.Show($"Sincronização concluída.\n\nBaixadas/atualizadas: {downloaded}\nDisponíveis no cache: {cached}\nSem resultado: {mediaSongs.Count-downloaded-cached}","LRCLIB");
         }
         finally { IsEnabled=true; StatusText.Text="Pronto — modo online/offline ativo"; }
     }
-    private void SearchLyrics_Click(object sender,RoutedEventArgs e)
+    private async void SearchLyrics_Click(object sender,RoutedEventArgs e)
     {
         var selected=SongsGrid.SelectedItem as Song;
-        var window=new LyricsSearchWindow(_database,selected) { Owner=this };
+        var window=new LyricsSearchWindow(_database,selected?.Id>0?selected:null) { Owner=this };
         if(selected is not null) window.Prefill(selected.Artist,selected.Title);
-        window.ShowDialog(); SongsGrid.Items.Refresh();
+        window.ShowDialog(); await RefreshAsync(SearchBox.Text.Trim());
     }
-    private void LyricsLibrary_Click(object sender,RoutedEventArgs e) =>
+    private async void LyricsLibrary_Click(object sender,RoutedEventArgs e)
+    {
         new LyricsLibraryWindow(_database) { Owner=this }.ShowDialog();
+        await RefreshAsync(SearchBox.Text.Trim());
+    }
 }

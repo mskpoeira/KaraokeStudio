@@ -10,9 +10,32 @@ public sealed class LibraryImporter(DatabaseService database)
     public async Task<ImportProgress> ImportAsync(string source, string library, bool copyFiles, IProgress<ImportProgress>? progress = null, CancellationToken token = default)
     {
         Directory.CreateDirectory(library); int examined=0, imported=0, duplicates=0;
-        foreach (var original in Directory.EnumerateFiles(source, "*.*", SearchOption.AllDirectories).Where(f => MediaExtensions.Contains(Path.GetExtension(f))))
+        var files=Directory.EnumerateFiles(source, "*.*", new EnumerationOptions { RecurseSubdirectories=true, IgnoreInaccessible=true })
+            .Where(f => MediaExtensions.Contains(Path.GetExtension(f)) || LocalLyricsService.IsLyrics(f)).ToList();
+        foreach (var original in files)
         {
             token.ThrowIfCancellationRequested(); examined++;
+            if(LocalLyricsService.IsLyrics(original))
+            {
+                var root=Path.GetFullPath(LrcLibLyricsProvider.LyricsRoot)+Path.DirectorySeparatorChar;
+                if(Path.GetFullPath(original).StartsWith(root,StringComparison.OrdinalIgnoreCase)) { duplicates++; continue; }
+                var relative=Path.GetRelativePath(source,original);
+                var target=Path.Combine(LrcLibLyricsProvider.LyricsRoot,relative);
+                Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                if(File.Exists(target))
+                {
+                    var lyricHash=await HashAsync(original,token);
+                    if(await HashAsync(target,token)==lyricHash) { duplicates++; continue; }
+                    target=UniquePath(target,lyricHash);
+                    if(File.Exists(target)) { duplicates++; continue; }
+                }
+                File.Copy(original,target);
+                var metadata=Path.ChangeExtension(original,".lrclib.json");
+                if(File.Exists(metadata)) File.Copy(metadata,Path.ChangeExtension(target,".lrclib.json"),false);
+                imported++;
+                progress?.Report(new(examined,imported,duplicates,Path.GetFileName(original)));
+                continue;
+            }
             var hash = await HashAsync(original, token); var fileName = Path.GetFileName(original);
             var parts = Path.GetFileNameWithoutExtension(original).Split(" - ", 2, StringSplitOptions.TrimEntries);
             var artist = parts.Length == 2 ? parts[0] : "Desconhecido"; var title = parts.Length == 2 ? parts[1] : parts[0];
