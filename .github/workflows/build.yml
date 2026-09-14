@@ -1,20 +1,75 @@
-name: Compilar Karaokê Studio
+name: Compilar e empacotar Karaokê Studio
 
 on:
   push:
     branches: [ main, develop ]
   pull_request:
     branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: karaoke-studio-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   build:
     runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: true
+      DOTNET_CLI_TELEMETRY_OPTOUT: true
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 8.0.x
+          cache: true
+          cache-dependency-path: KaraokeStudio.csproj
+
       - name: Restaurar dependências
         run: dotnet restore KaraokeStudio.sln
+
       - name: Compilar
         run: dotnet build KaraokeStudio.sln --configuration Release --no-restore
+
+      - name: Publicar Windows x64 autocontido
+        run: >-
+          dotnet publish KaraokeStudio.csproj
+          --configuration Release
+          --runtime win-x64
+          --self-contained true
+          --no-restore
+          -p:PublishSingleFile=true
+          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:DebugType=None
+          -p:DebugSymbols=false
+          --output artifacts/publish
+
+      - name: Montar pacote ZIP
+        shell: pwsh
+        run: |
+          [xml]$project = Get-Content "KaraokeStudio.csproj"
+          $version = [string]$project.Project.PropertyGroup.Version
+          if ([string]::IsNullOrWhiteSpace($version)) { throw "Versão não encontrada no KaraokeStudio.csproj." }
+
+          $packageRoot = Join-Path $PWD "artifacts/package/KaraokeStudio"
+          New-Item -ItemType Directory -Force -Path $packageRoot | Out-Null
+          Copy-Item "artifacts/publish/*" $packageRoot -Recurse -Force
+
+          $zip = Join-Path $PWD "artifacts/KaraokeStudio-v$version-win-x64.zip"
+          if (Test-Path $zip) { Remove-Item $zip -Force }
+          Compress-Archive -Path "$packageRoot/*" -DestinationPath $zip -CompressionLevel Optimal
+
+          "PACKAGE_PATH=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+          "PACKAGE_NAME=KaraokeStudio-v$version-win-x64" | Out-File -FilePath $env:GITHUB_ENV -Append -Encoding utf8
+
+      - name: Publicar pacote de implantação
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ env.PACKAGE_NAME }}
+          path: ${{ env.PACKAGE_PATH }}
+          if-no-files-found: error
+          retention-days: 30
