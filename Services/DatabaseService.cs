@@ -122,15 +122,32 @@ public sealed class DatabaseService
         return Convert.ToInt32(await command.ExecuteScalarAsync()) > 0;
     }
 
-    public async Task<List<Song>> SearchAsync(string term = "")
+    public async Task<List<Song>> SearchAsync(string term = "", CancellationToken token = default)
     {
         var result = new List<Song>();
-        await using var connection = new SqliteConnection(_connectionString); await connection.OpenAsync();
+        await using var connection = new SqliteConnection(_connectionString);
+        await connection.OpenAsync(token);
         var command = connection.CreateCommand();
-        command.CommandText = "SELECT Id,Title,Artist,Genre,Language,MediaPath,LyricsPath,FileHash,Format,Favorite FROM Songs WHERE $q='' OR Title LIKE $like OR Artist LIKE $like OR Genre LIKE $like ORDER BY Artist,Title LIMIT 2000";
-        command.Parameters.AddWithValue("$q", term); command.Parameters.AddWithValue("$like", $"%{term}%");
-        await using var reader = await command.ExecuteReaderAsync();
-        while (await reader.ReadAsync()) result.Add(new Song { Id=reader.GetInt64(0), Title=reader.GetString(1), Artist=reader.GetString(2), Genre=reader.GetString(3), Language=reader.GetString(4), MediaPath=reader.GetString(5), LyricsPath=reader.IsDBNull(6)?null:reader.GetString(6), FileHash=reader.GetString(7), Format=reader.GetString(8), Favorite=reader.GetBoolean(9) });
+        command.CommandText = "SELECT Id,Title,Artist,Genre,Language,MediaPath,LyricsPath,FileHash,Format,Favorite FROM Songs WHERE $q='' OR Title LIKE $like OR Artist LIKE $like OR Genre LIKE $like ORDER BY Artist,Title";
+        command.Parameters.AddWithValue("$q", term);
+        command.Parameters.AddWithValue("$like", $"%{term}%");
+        await using var reader = await command.ExecuteReaderAsync(token);
+        while (await reader.ReadAsync(token))
+        {
+            result.Add(new Song
+            {
+                Id=reader.GetInt64(0),
+                Title=reader.GetString(1),
+                Artist=reader.GetString(2),
+                Genre=reader.GetString(3),
+                Language=reader.GetString(4),
+                MediaPath=reader.GetString(5),
+                LyricsPath=reader.IsDBNull(6)?null:reader.GetString(6),
+                FileHash=reader.GetString(7),
+                Format=reader.GetString(8),
+                Favorite=reader.GetBoolean(9)
+            });
+        }
         return result;
     }
 }
