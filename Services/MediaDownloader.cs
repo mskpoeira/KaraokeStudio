@@ -10,6 +10,7 @@ public static class MediaDownloader
     {
         if(uri.Scheme!=Uri.UriSchemeHttps || !string.IsNullOrEmpty(uri.UserInfo))
             throw new InvalidOperationException("Informe um link HTTPS direto de áudio ou vídeo.");
+
         Directory.CreateDirectory(directory);
         var temporary=Path.Combine(directory,Guid.NewGuid()+".part");
         try
@@ -17,12 +18,21 @@ public static class MediaDownloader
             using var client=new HttpClient { Timeout=TimeSpan.FromMinutes(10) };
             using var response=await client.GetAsync(uri,HttpCompletionOption.ResponseHeadersRead,token);
             response.EnsureSuccessStatusCode();
+
+            var finalUri=response.RequestMessage?.RequestUri;
+            if(finalUri is null || finalUri.Scheme!=Uri.UriSchemeHttps)
+                throw new IOException("O download foi redirecionado para uma origem não HTTPS e foi bloqueado.");
+
             const long limit=500L*1024*1024;
-            if(response.Content.Headers.ContentLength>limit) throw new IOException("Limite por arquivo: 500 MB.");
+            if(response.Content.Headers.ContentLength>limit)
+                throw new IOException("Limite por arquivo: 500 MB.");
+
             await using(var input=await response.Content.ReadAsStreamAsync(token))
-            await using(var output=File.Create(temporary))
+            await using(var output=new FileStream(temporary,FileMode.CreateNew,FileAccess.Write,FileShare.None,81920,FileOptions.Asynchronous|FileOptions.SequentialScan))
             {
-                var buffer=new byte[81920]; long total=0; int count;
+                var buffer=new byte[81920];
+                long total=0;
+                int count;
                 while((count=await input.ReadAsync(buffer,token))>0)
                 {
                     total+=count;
@@ -30,17 +40,26 @@ public static class MediaDownloader
                     await output.WriteAsync(buffer.AsMemory(0,count),token);
                 }
             }
+
             var header=new byte[16];
             using(var file=File.OpenRead(temporary))
-                if(file.Read(header,0,header.Length)<12) throw new IOException("Arquivo de mídia vazio ou inválido.");
+                if(file.Read(header,0,header.Length)<12)
+                    throw new IOException("Arquivo de mídia vazio ou inválido.");
+
             var extension=DetectExtension(header);
-            if(extension is null) throw new IOException("O link não entregou MP3, WAV ou MP4/M4A. Links de páginas e downloads protegidos não são aceitos.");
+            if(extension is null)
+                throw new IOException("O link não entregou MP3, WAV ou MP4/M4A. Links de páginas e downloads protegidos não são aceitos.");
+
             var completed=Path.ChangeExtension(temporary,extension);
             File.Move(temporary,completed);
             return completed;
         }
-        finally { if(File.Exists(temporary)) File.Delete(temporary); }
+        finally
+        {
+            if(File.Exists(temporary)) File.Delete(temporary);
+        }
     }
+
     public static string? DetectExtension(byte[] header)
     {
         if(header.Length<12) return null;
