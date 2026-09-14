@@ -41,7 +41,6 @@ jobs:
           --configuration Release
           --runtime win-x64
           --self-contained true
-          --no-restore
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
           -p:DebugType=None
