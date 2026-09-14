@@ -7,6 +7,7 @@
 - falhas assíncronas ao abrir uma mídia devolvem automaticamente a apresentação ao início da lista de espera, evitando perda do item;
 - sincronização LRCLIB passa a trabalhar sobre todo o catálogo persistido, mesmo quando existe filtro de pesquisa ativo na tela;
 - falhas individuais de sincronização deixam de interromper o restante do lote;
+- Microsoft.Data.Sqlite atualizado da série 8.0.8 para 8.0.31;
 - interface e metadados de versão atualizados para 0.5.2.
 
 ## 0.5.1
