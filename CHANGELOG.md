@@ -1,5 +1,16 @@
 # Histórico de versões
 
+## 0.5.1
+
+- auditoria de estabilidade em inicialização, reprodução, sincronização e biblioteca de letras;
+- sessão persistente passa a se recuperar mesmo quando o arquivo anterior está incompleto ou corrompido;
+- importação assíncrona evita congelamentos longos e remove cópias órfãs quando arquivos duplicados são detectados;
+- arquivos CDG deixam de ser tratados incorretamente como mídia reproduzível isolada;
+- backup do catálogo passa a usar a rotina nativa de backup do SQLite, com WAL e chaves estrangeiras habilitadas;
+- pesquisa do acervo recebe debounce e tratamento de falhas, reduzindo leituras repetidas enquanto o usuário digita;
+- pesquisa, download e exclusão de letras recebem tratamento de cancelamento e falhas de I/O;
+- pipeline CI passa a compilar, publicar uma versão Windows x64 autocontida, compactar e disponibilizar o ZIP de implantação.
+
 ## 0.5.0
 
 - prioridade offline para mídia e letras; download HTTPS direto e vinculação de áudio;

@@ -19,7 +19,7 @@ public partial class MainWindow
     private CancellationTokenSource? _intermission;
     private string _stageMessage = "";
     private string SessionPath => Path.Combine(DataRoot, "session.json");
-    private sealed record SessionData(List<QueueItem> Queue, List<PerformanceScore> Scores);
+    private sealed record SessionData(List<QueueItem>? Queue, List<PerformanceScore>? Scores);
 
     private void LoadSession()
     {
@@ -30,16 +30,23 @@ public partial class MainWindow
                 var saved=JsonSerializer.Deserialize<SessionData>(File.ReadAllText(SessionPath));
                 if(saved is not null)
                 {
-                    foreach(var item in saved.Queue) _queue.Add(item);
-                    _scores=saved.Scores;
+                    foreach(var item in saved.Queue ?? [])
+                    {
+                        if(item?.Song is not null) _queue.Add(item);
+                    }
+                    _scores=saved.Scores ?? [];
                 }
             }
-            _sessionLoaded=true;
         }
         catch(Exception ex)
         {
             MessageBox.Show($"Não foi possível recuperar a lista de espera e o ranking: {ex.Message}\nO arquivo original será preservado.");
         }
+        finally
+        {
+            _sessionLoaded=true;
+        }
+
         RefreshRanking();
         _queue.CollectionChanged+=(_,_)=>SaveSession();
     }
@@ -49,11 +56,14 @@ public partial class MainWindow
         if(!_sessionLoaded) return;
         try
         {
-            File.WriteAllText(SessionPath+".tmp",JsonSerializer.Serialize(new SessionData(_queue.ToList(),_scores),new JsonSerializerOptions { WriteIndented=true }));
-            File.Move(SessionPath+".tmp",SessionPath,true);
+            Directory.CreateDirectory(DataRoot);
+            var temporary=SessionPath+".tmp";
+            File.WriteAllText(temporary,JsonSerializer.Serialize(new SessionData(_queue.ToList(),_scores),new JsonSerializerOptions { WriteIndented=true }));
+            File.Move(temporary,SessionPath,true);
         }
         catch(Exception ex) { StatusText.Text=$"Falha ao salvar sessão: {ex.Message}"; }
     }
+
     private void RefreshRanking() => RankingList.ItemsSource=_scores.OrderByDescending(x=>x.Score).ThenBy(x=>x.FinishedAt).ToList();
     private string EnteredSingers => string.IsNullOrWhiteSpace(SingersBox.Text)?"Convidado":SingersBox.Text.Trim();
     private bool DuringResult => _awaitingScore || _intermission is not null;
@@ -63,11 +73,13 @@ public partial class MainWindow
         var index=QueueList.SelectedIndex;
         if(index>0) { _queue.Move(index,index-1); QueueList.SelectedIndex=index-1; }
     }
+
     private void MoveDown_Click(object sender,RoutedEventArgs e)
     {
         var index=QueueList.SelectedIndex;
         if(index>=0 && index<_queue.Count-1) { _queue.Move(index,index+1); QueueList.SelectedIndex=index+1; }
     }
+
     private void EditSingers_Click(object sender,RoutedEventArgs e)
     {
         if(QueueList.SelectedItem is not QueueItem item) return;
@@ -75,6 +87,7 @@ public partial class MainWindow
         if(string.IsNullOrWhiteSpace(names)) return;
         _queue[QueueList.SelectedIndex]=new QueueItem { Song=item.Song,Singer=names.Trim(),AddedAt=item.AddedAt };
     }
+
     private async void Score_Click(object sender,RoutedEventArgs e)
     {
         if(_current is null || _intermission is not null) return;
@@ -86,6 +99,7 @@ public partial class MainWindow
         StatusText.Text="Nota preparada. Será registrada ao terminar a música.";
         if(_awaitingScore) await PresentResultAsync();
     }
+
     private async void PerformanceEnded(object sender,RoutedEventArgs e)
     {
         if(_current is null || DuringResult) return;
@@ -98,10 +112,12 @@ public partial class MainWindow
         }
         await PresentResultAsync();
     }
+
     private void ShowStage(string text)
     {
         _stageMessage=text; LyricsText.Text=text; _screen?.SetLyrics(text);
     }
+
     private async Task PresentResultAsync()
     {
         if(_current is null || !_awaitingScore || _pendingScore is null || _intermission is not null) return;
@@ -124,23 +140,29 @@ public partial class MainWindow
         catch(OperationCanceledException) { }
         finally { if(ReferenceEquals(_intermission,cancellation)) _intermission=null; }
     }
+
     private void CancelPresentation()
     {
         _intermission?.Cancel(); _intermission=null; _awaitingScore=false;
         _pendingScore=null; _stageMessage=""; _current=null; _playing=false;
     }
+
     private void Player_MediaFailed(object sender,ExceptionRoutedEventArgs e)
     {
         CancelPresentation(); _timer.Stop(); Player.Stop(); Player.Source=null; _screen?.Stop();
         StatusText.Text="Falha ao reproduzir o arquivo. Verifique o formato e os codecs do Windows.";
-        MessageBox.Show($"Não foi possível reproduzir o áudio/vídeo.\n{e.ErrorException.Message}","Falha de reprodução");
+        var details=e.ErrorException?.Message ?? "Falha de mídia não detalhada pelo Windows.";
+        MessageBox.Show($"Não foi possível reproduzir o áudio/vídeo.\n{details}","Falha de reprodução");
     }
+
     private void Volume_ValueChanged(object sender,RoutedPropertyChangedEventArgs<double> e)
     {
         if(Player is not null) { Player.Volume=e.NewValue; Player.IsMuted=false; }
     }
+
     private void FindYouTube_Click(object sender,RoutedEventArgs e)=>OpenMusicSearch("https://www.youtube.com/results?search_query=");
     private void FindSpotify_Click(object sender,RoutedEventArgs e)=>OpenMusicSearch("https://open.spotify.com/search/");
+
     private void OpenMusicSearch(string prefix)
     {
         if(SongsGrid.SelectedItem is not Song song) { MessageBox.Show("Selecione a música ou letra no acervo."); return; }
@@ -151,26 +173,47 @@ public partial class MainWindow
         }
         catch(Exception ex) { MessageBox.Show($"Não foi possível abrir o navegador: {ex.Message}"); }
     }
+
     private async void LinkAudio_Click(object sender,RoutedEventArgs e)
     {
         if(SongsGrid.SelectedItem is not Song selected) { MessageBox.Show("Selecione uma letra ou música do acervo."); return; }
         var dialog=new Microsoft.Win32.OpenFileDialog { Title="Escolha o áudio ou vídeo desta música",Filter="Áudio/vídeo|*.mp3;*.mp4;*.m4a;*.wav;*.wma;*.wmv;*.avi;*.mkv" };
         if(dialog.ShowDialog()!=true) return;
+
+        string? target=null;
+        var copied=false;
         try
         {
             await using var stream=File.OpenRead(dialog.FileName);
             var hash=Convert.ToHexString(await SHA256.HashDataAsync(stream));
             var folder=Path.Combine(DataRoot,"Acervo","Vinculados"); Directory.CreateDirectory(folder);
-            var target=Path.Combine(folder,hash+Path.GetExtension(dialog.FileName).ToLowerInvariant());
-            if(!File.Exists(target)) File.Copy(dialog.FileName,target);
+            target=Path.Combine(folder,hash+Path.GetExtension(dialog.FileName).ToLowerInvariant());
+            if(!File.Exists(target))
+            {
+                File.Copy(dialog.FileName,target);
+                copied=true;
+            }
+
             var song=new Song { Artist=selected.Artist,Title=selected.Title,MediaPath=target,LyricsPath=selected.LyricsPath,FileHash=hash,Format=Path.GetExtension(target).TrimStart('.').ToUpperInvariant() };
             if(!await _database.AddAsync(song))
-            { MessageBox.Show("Este áudio já está cadastrado. Localize-o no acervo para reproduzir."); return; }
+            {
+                if(copied && File.Exists(target)) File.Delete(target);
+                MessageBox.Show("Este áudio já está cadastrado. Localize-o no acervo para reproduzir.");
+                return;
+            }
             await RefreshAsync(SearchBox.Text.Trim());
             StatusText.Text="Áudio local copiado para o acervo e disponível offline.";
         }
-        catch(Exception ex) { MessageBox.Show($"Não foi possível vincular áudio: {ex.Message}"); }
+        catch(Exception ex)
+        {
+            if(copied && !string.IsNullOrWhiteSpace(target) && File.Exists(target))
+            {
+                try { File.Delete(target); } catch { }
+            }
+            MessageBox.Show($"Não foi possível vincular áudio: {ex.Message}");
+        }
     }
+
     private async void DownloadAudio_Click(object sender,RoutedEventArgs e)
     {
         if(SongsGrid.SelectedItem is not Song selected) { MessageBox.Show("Selecione primeiro a música ou letra no acervo."); return; }
@@ -201,8 +244,12 @@ public partial class MainWindow
             IsEnabled=true;
             if(downloaded is not null)
             {
-                if(File.Exists(downloaded)) File.Delete(downloaded);
-                if(File.Exists(downloaded+".origin.txt")) File.Delete(downloaded+".origin.txt");
+                try
+                {
+                    if(File.Exists(downloaded)) File.Delete(downloaded);
+                    if(File.Exists(downloaded+".origin.txt")) File.Delete(downloaded+".origin.txt");
+                }
+                catch(Exception ex) { StatusText.Text=$"Falha ao limpar download temporário: {ex.Message}"; }
             }
         }
     }
